@@ -75,6 +75,7 @@ def get_tmux_conf_component_3() -> str:
         # (‑●‑●)> dual licensed under the WTFPL v2 license and the MIT license,
         #         without any warranty.
         #         Copyright 2012— Gregory Pakosz (@gpakosz).
+        #         Modified by xubinh © 2025
         #
         # ------------------------------------------------------------------------------
         # 🚨 DO NOT MODIFY THIS FILE
@@ -148,6 +149,7 @@ def get_tmux_conf_local_component_3() -> str:
         # (‑●‑●)> dual licensed under the WTFPL v2 license and the MIT license,
         #         without any warranty.
         #         Copyright 2012— Gregory Pakosz (@gpakosz).
+        #         Modified by xubinh © 2025
 
 
     """
