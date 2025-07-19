@@ -369,19 +369,6 @@ _vbar() {
     printf '%s' "$vbar"
 }
 
-_toggle_mouse() {
-    old=$(tmux show -gv mouse)
-    new=""
-
-    if [ "$old" = "on" ]; then
-        new="off"
-    else
-        new="on"
-    fi
-
-    tmux set -g mouse $new
-}
-
 _battery_info() {
     battery_count=0
     battery_charge=0
