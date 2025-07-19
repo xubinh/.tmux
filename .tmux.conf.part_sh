@@ -1,19 +1,21 @@
 #!/usr/bin/env sh
 
-# exit the script if any statement returns a non-true return value
 set -e
 
 unset SHELL
 
-unset GREP_OPTIONS
-export LC_NUMERIC=C
+# 对 shell 环境进行微调, 构建一个干净可预测的执行环境
+unset GREP_OPTIONS  # `GREP_OPTIONS` 早期用于为 grep 设置默认参数; 现已被弃用
+export LC_NUMERIC=C # `LC_NUMERIC` 用于控制数字的显示格式; "C" 是 POSIX 标准环境, 等价于 "en_US"
 # shellcheck disable=SC3041
 if (set +H 2>/dev/null); then
-    set +H
+    set +H # 关闭历史命令替换功能 (若支持关闭)
 fi
 
+# 检测当前系统的 sed 是否支持 `-E` 选项; 如不支持则自动将 `-E` 转换为 `-r`, 使脚本仍然能够正常运行
 if ! printf '' | sed -E 's///' 2>/dev/null; then
     if printf '' | sed -r 's///' 2>/dev/null; then
+        # 定义一个同名函数, 拦截 sed 请求
         sed() {
             n=$#
             while [ "$n" -gt 0 ]; do
@@ -23,22 +25,34 @@ if ! printf '' | sed -E 's///' 2>/dev/null; then
                 set -- "$@" "$arg"
                 n=$((n - 1))
             done
-            command sed "$@"
+            command sed "$@" # 将请求转发给真正的 sed 程序
         }
     fi
 fi
 
 _uname_s=$(uname -s)
 
+# 如果 TMUX 环境变量为空, 说明当前 shell 并不在 Tmux 会话中, 直接退出
 [ -z "$TMUX" ] && exit 255
+
+# 确定当前 Tmux 会话所对应的 socket 路径 `TMUX_SOCKET`; Tmux 的环境变量 `$TMUX` 格式通常是 `/tmp/tmux-UID/default,PID,WINDOW`, 这里取出第一个字段 (即 socket 路径) 作为 `TMUX_SOCKET`
 if [ -z "$TMUX_SOCKET" ]; then
     TMUX_SOCKET=$(printf '%s' "$TMUX" | cut -d, -f1)
 fi
+
+# 定位 Tmux 可执行文件
 if [ -z "$TMUX_PROGRAM" ]; then
+    # 提取 Tmux 的主进程 PID
     TMUX_PID=$(printf '%s' "$TMUX" | cut -d, -f2)
+
+    # 用 lsof & perl 或 readlink 获取当前 Tmux 实例的可执行文件完整路径
     TMUX_PROGRAM=$(lsof -b -w -a -d txt -p "$TMUX_PID" -Fn 2>/dev/null | perl -n -e "if (s/^n((?:.(?!dylib$|so$))+)$/\1/g) { print; exit } } exit 1; {" 2>/dev/null || readlink "/proc/$TMUX_PID/exe" 2>/dev/null)
+
+    # 验证可执行文件是否真的是这个会话的控制者
     [ "$("$TMUX_PROGRAM" -S "$TMUX_SOCKET" display -p '#{pid}' 2>/dev/null)" = "$TMUX_PID" ] || TMUX_PROGRAM=$(command -v tmux || printf tmux)
 fi
+
+# 定义一个同名的 Tmux 函数, 固定请求的目标为当前 Tmux 会话
 if [ "$TMUX_PROGRAM" = "tmux" ]; then
     tmux() {
         command tmux ${TMUX_SOCKET:+-S "$TMUX_SOCKET"} "$@"
@@ -49,8 +63,10 @@ else
     }
 fi
 
+# 略
 _tmux_version=$(tmux -V | perl -n -e '($l, $r) = $_ =~ /^[^0-9]+([0-9.]+)([a-z])?(-rc.*)?$/; print $l * 1000 + ($r eq "" ? 0 : ord($r) - 96)')
 
+# 略
 _is_true() {
     case "$1" in
     true | yes | 1)
@@ -62,14 +78,17 @@ _is_true() {
     esac
 }
 
+# 略
 _is_enabled() {
     [ "$1" = "enabled" ]
 }
 
+# 略
 _is_disabled() {
     [ "$1" = "disabled" ]
 }
 
+# 将 0~20 的阿拉伯数字转换为对应的 Unicode 圆圈数字符号 (circled digits), 若为其他字符则按原样输出
 _circled() {
     circled_digits='⓪ ① ② ③ ④ ⑤ ⑥ ⑦ ⑧ ⑨ ⑩ ⑪ ⑫ ⑬ ⑭ ⑮ ⑯ ⑰ ⑱ ⑲ ⑳'
     if [ "$1" -le 20 ] 2>/dev/null; then
@@ -81,10 +100,12 @@ _circled() {
     fi
 }
 
+# 使用 perl 将字符串中的 `\uXXXX` 或 `\UXXXXXXXX` 格式的 Unicode 转义序列转义为对应的 Unicode 字符
 _decode_unicode_escapes() {
     printf '%s' "$*" | perl -CS -pe 's/(\\u([0-9A-Fa-f]{1,4})|\\U([0-9A-Fa-f]{1,8}))/chr(hex($2.$3))/eg' 2>/dev/null
 }
 
+# 美化路径名: 缩短过长的路径; 替换 `$HOME` 为 `~`; 中间部分用 `...` 省略; 只保留前缀与末尾路径名
 _pretty_path() {
     max_length=${1:-auto}
     shift
@@ -97,6 +118,7 @@ _pretty_path() {
     /^.{0,$max_length}$/ || s|(~/[^/]+)(/[^/]+)(?:/.+)(/[^/]+)$|$1/...$3|g;' -- -HOME="$HOME" -max_length="$max_length"
 }
 
+# 实现一个多平台兼容的 `pkill -f` 函数, 用于根据命令行匹配内容杀掉对应的进程
 if command -v pkill >/dev/null 2>&1; then
     _pkillf() {
         pkill -f "$@" || true
@@ -125,6 +147,7 @@ EOF
     esac
 fi
 
+# 实现一个多平台兼容的时间戳函数
 if perl -MTime::HiRes -e1; then
     _timestamp() {
         while IFS= read -r line; do
@@ -150,6 +173,7 @@ else
     esac
 fi
 
+# 根据当前终端宽度, 颜色样式, 填充字符, 以及进度数值, 生成一个漂亮的可嵌入 Tmux 状态栏的彩色进度条字符串
 _bar() {
     bar_palette=$(printf '%s' "$1" | tr ';' ',')
     bar_symbol_empty=$2
@@ -245,6 +269,7 @@ _bar() {
     printf '%s' "$bar"
 }
 
+# 同 `_bar()`
 _hbar() {
     hbar_palette=$(printf '%s' "$1" | tr ';' ',')
     hbar_value=$2
@@ -307,6 +332,7 @@ _hbar() {
     printf '%s' "$hbar"
 }
 
+# 同 `_bar()`
 _vbar() {
     vbar_palette=$(printf '%s' "$1" | tr ';' ',')
     vbar_value=$2
@@ -369,6 +395,7 @@ _vbar() {
     printf '%s' "$vbar"
 }
 
+# 实现了跨平台的电池信息检测函数, 用于检测当前设备上的电池剩余电量百分比, 并将其以变量的形式传递给 Tmux
 _battery_info() {
     battery_count=0
     battery_charge=0
@@ -441,6 +468,7 @@ EOF
     fi
 }
 
+# 实现了一个跨平台的电池充电状态检测器, 用于检测当前设备电池是否正在放电
 _battery_status() {
     battery_status_charging=$1
     battery_status_discharging=$2
@@ -496,6 +524,7 @@ EOF
     tmux set -g '@battery_status' "$battery_status" >/dev/null 2>/dev/null
 }
 
+# 获取当前 Tmux pane 中正在运行的前台主要命令 (例如 ssh, vim, top 等等) 的 PID, 用户名, 以及命令行
 _pane_info() {
     pane_pid="$1"
     pane_tty="${2##/dev/}"
@@ -560,6 +589,7 @@ _pane_info() {
     esac
 }
 
+# 从传入的命令字符串中提取出 SSH 或 MOSH 客户端连接的参数 (例如目标主机, 用户名等等), 以便进一步分析或显示当前连接的远程地址信息
 _ssh_or_mosh_args() {
     case "$1" in
     *ssh*)
@@ -573,6 +603,7 @@ _ssh_or_mosh_args() {
     printf '%s' "$args"
 }
 
+# 实现了一个智能识别当前 Tmux pane 中运行用户身份的工具函数, 支持本地命令或远程 SSH 连接
 _username() {
     pane_pid=${1:-$(tmux display -p '#{pane_pid}')}
     pane_tty=${2:-$(tmux display -p '#{b:pane_tty}')}
@@ -600,6 +631,7 @@ _username() {
     printf '%s\n' "$username"
 }
 
+# 类似 `_username()`
 _hostname() {
     pane_pid=${1:-$(tmux display -p '#{pane_pid}')}
     pane_tty=${2:-$(tmux display -p '#{b:pane_tty}')}
@@ -686,6 +718,7 @@ _loadavg() {
     esac
 }
 
+# 基于当前 Tmux pane 中正在运行的远程连接 (如 SSH 或 MOSH) 命令, 智能在新窗口中复用相同连接发起新的 session
 _new_window_ssh() {
     pane_pid=${1:-$(tmux display -p '#{pane_pid}')}
     pane_tty=${2:-$(tmux display -p '#{b:pane_tty}')}
@@ -710,10 +743,12 @@ _new_window_ssh() {
     esac
 }
 
+# 略
 _new_window() {
     _new_window_ssh "$@"
 }
 
+# 同 `_new_window_ssh()`
 _split_window_ssh() {
     pane_pid=${1:-$(tmux display -p '#{pane_pid}')}
     pane_tty=${2:-$(tmux display -p '#{b:pane_tty}')}
@@ -738,6 +773,7 @@ _split_window_ssh() {
     esac
 }
 
+# 略
 _split_window() {
     _split_window_ssh "$@"
 }
