@@ -23,6 +23,8 @@ def write_to_file(file_path: str, content: str) -> None:
 
 
 def move_file_to_dir(file_path: str, target_dir: str) -> None:
+    target_dir = os.path.expanduser(target_dir)
+
     if not os.path.exists(target_dir):
         os.makedirs(target_dir)
 
